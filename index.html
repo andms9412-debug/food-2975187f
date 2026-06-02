@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>美食手寫筆記 IG 貼文生成器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=LXGW+WenKai+TC:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e8eaed;
+    --muted:#9aa3b2; --accent:#f0b429;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:"LXGW WenKai TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    background:var(--bg); color:var(--text); display:flex; min-height:100vh;
+  }
+  .controls{width:400px; flex:none; padding:24px; border-right:1px solid var(--line); overflow-y:auto; height:100vh;}
+  .stage{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px; min-width:0;}
+  h1{font-size:18px; margin:0 0 4px;}
+  .sub{color:var(--muted); font-size:13px; margin:0 0 18px;}
+  label{display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; font-weight:600;}
+  input[type=text], textarea{
+    width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line);
+    background:#0c0e12; color:var(--text); font-size:15px; font-family:inherit; resize:vertical;
+  }
+  textarea{min-height:70px; line-height:1.5;}
+  .drop{border:2px dashed var(--line); border-radius:12px; padding:16px; text-align:center; color:var(--muted); cursor:pointer; transition:.15s; font-size:13px;}
+  .drop:hover,.drop.over{border-color:var(--accent); color:var(--text); background:#14171e;}
+  .drop.has{border-style:solid; border-color:#2a9d8f; color:#7fd3c4;}
+  .photo-block{border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px;}
+  .dots-pick{display:flex; gap:6px; margin-top:6px;}
+  .dots-pick span{width:30px; height:30px; border-radius:50%; cursor:pointer; background:#3a4150; transition:.1s;}
+  .dots-pick span.on{background:var(--accent);}
+  .swatches{display:flex; gap:8px; margin-top:6px;}
+  .swatch{width:28px; height:28px; border-radius:50%; cursor:pointer; border:2px solid transparent;}
+  .swatch.on{border-color:#fff;}
+  button{font-family:inherit; cursor:pointer; border:none; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:700;}
+  .btn-primary{background:var(--accent); color:#3a2a00; width:100%; margin-top:20px;}
+  .btn-ghost{background:#222732; color:var(--text);}
+  canvas{width:min(74vh,560px); height:min(74vh,560px); border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.5); background:#fff;}
+  .hint{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.6;}
+  .caption-wrap{display:flex; flex-direction:column; align-items:center; gap:8px;}
+  .caption-box{width:380px; max-width:90vw; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; font-size:13px; white-space:pre-wrap; color:var(--text); line-height:1.7; display:none;}
+  #overlay{position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; padding:18px; z-index:50;}
+  #overlay.show{display:flex;}
+  .ov-card{background:var(--panel); border-radius:16px; padding:18px; max-width:440px; width:100%; max-height:92vh; overflow-y:auto;}
+  .ov-card img{width:100%; border-radius:12px; display:block; margin:12px 0;}
+  .ov-tip{font-size:14px; color:var(--text); margin:0 0 4px; line-height:1.6;}
+  @media(max-width:760px){
+    body{flex-direction:column;}
+    .controls{width:100%; height:auto; border-right:none; border-bottom:1px solid var(--line);}
+    .stage{padding:16px;}
+    canvas{width:min(92vw,520px); height:min(92vw,520px);}
+    .caption-box{width:92vw;}
+  }
+</style>
+</head>
+<body>
+  <div class="controls">
+    <h1>🍽 美食手寫筆記 IG 生成器</h1>
+    <p class="sub">手寫風 · 兩張照片 · 回訪意願圓點 · 下載 1080×1080</p>
+
+    <label>店家名稱</label>
+    <input type="text" id="store" value="Days Eye Coffee">
+
+    <label>營業時間（🕐 開頭可省略，會自動加）</label>
+    <input type="text" id="hours" value="10:00–17:30（週一公休）">
+
+    <div class="photo-block">
+      <div class="drop" id="drop1" data-n="1">① 點此或拖曳第一張照片</div>
+      <label>第一張照片的手寫筆記（一行一項）</label>
+      <textarea id="note1">・蒜香生火腿布切塔 $230
+・青檸葡萄柚美式 $190</textarea>
+    </div>
+
+    <div class="photo-block">
+      <div class="drop" id="drop2" data-n="2">② 點此或拖曳第二張照片（選填）</div>
+      <label>第二張照片的手寫筆記</label>
+      <textarea id="note2">吧檯／二人四人座
+都有插座，適合拍照、聊天、做事</textarea>
+    </div>
+
+    <label>回訪意願</label>
+    <div class="dots-pick" id="dotsPick"></div>
+
+    <label>地址</label>
+    <input type="text" id="addr" value="西區向上路一段79巷80弄2號">
+
+    <label>圓點 / 主色</label>
+    <div class="swatches" id="swatches"></div>
+
+    <button class="btn-primary" id="download">⬇ 下載貼文圖 (PNG)</button>
+    <button class="btn-ghost" id="genCaption" style="width:100%;margin-top:10px;">產生 IG 文字 caption</button>
+
+    <p class="hint">只放一張照片時，它會自動置中放大。文字即時更新在右側，下載就是右側那張。</p>
+  </div>
+
+  <div class="stage">
+    <canvas id="canvas" width="1080" height="1080"></canvas>
+    <div class="caption-wrap">
+      <div class="caption-box" id="caption"></div>
+      <button class="btn-ghost" id="copyCap" style="display:none;">複製 caption</button>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <div class="ov-card">
+      <p class="ov-tip">桌機會自動下載。<b>手機請長按下方圖片 → 儲存影像到相簿</b></p>
+      <img id="ovImg" alt="貼文圖">
+      <a id="ovDl" class="btn-primary" style="display:block;text-align:center;text-decoration:none;">⬇ 再下載一次</a>
+      <button class="btn-ghost" id="ovClose" style="width:100%;margin-top:10px;">關閉</button>
+    </div>
+  </div>
+
+<script>
+const cv=document.getElementById('canvas'), ctx=cv.getContext('2d');
+let img1=null, img2=null, rating=5, accent='#f0b429';
+const HAND='"LXGW WenKai TC","PingFang TC",sans-serif';
+const ACCENTS=['#f0b429','#f2784b','#e63946','#2a9d8f','#3a86ff','#8d6e63'];
+
+// swatches
+const sw=document.getElementById('swatches');
+ACCENTS.forEach((c,i)=>{const d=document.createElement('div');d.className='swatch'+(i===0?' on':'');d.style.background=c;
+  d.onclick=()=>{accent=c;[...sw.children].forEach(x=>x.classList.remove('on'));d.classList.add('on');draw();};sw.appendChild(d);});
+
+// dots picker
+const dp=document.getElementById('dotsPick');
+function buildDots(){dp.innerHTML='';for(let i=1;i<=5;i++){const s=document.createElement('span');
+  s.classList.toggle('on',i<=rating);s.onclick=()=>{rating=i;buildDots();draw();};dp.appendChild(s);}}
+
+// file drops
+function wireDrop(id){
+  const el=document.getElementById(id), n=el.dataset.n;
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.hidden=true; el.after(inp);
+  el.onclick=()=>inp.click();
+  inp.onchange=e=>load(e.target.files[0],n,el);
+  ['dragover','dragenter'].forEach(ev=>el.addEventListener(ev,e=>{e.preventDefault();el.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>el.addEventListener(ev,e=>{e.preventDefault();el.classList.remove('over');}));
+  el.addEventListener('drop',e=>{if(e.dataTransfer.files[0])load(e.dataTransfer.files[0],n,el);});
+}
+function load(f,n,el){
+  if(!f||!f.type.startsWith('image/'))return;
+  const r=new FileReader();
+  r.onload=ev=>{const im=new Image();im.onload=()=>{if(n==='1')img1=im;else img2=im;el.classList.add('has');el.textContent=(n==='1'?'① ':'② ')+'已選：'+f.name;draw();};im.src=ev.target.result;};
+  r.readAsDataURL(f);
+}
+wireDrop('drop1'); wireDrop('drop2');
+
+['store','hours','addr','note1','note2'].forEach(id=>document.getElementById(id).oninput=draw);
+
+// cover-fit draw with rounded corners
+function rImg(im,x,y,w,h,r){
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+  ctx.clip();
+  const s=Math.max(w/im.width,h/im.height), dw=im.width*s, dh=im.height*s;
+  ctx.drawImage(im,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+  ctx.restore();
+}
+function placeholder(x,y,w,h,txt){
+  ctx.save();
+  ctx.fillStyle='#ece5da';
+  ctx.beginPath();ctx.rect(x,y,w,h);ctx.fill();
+  ctx.fillStyle='#b9ad9c';ctx.font='30px '+HAND;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(txt,x+w/2,y+h/2);ctx.restore();
+}
+// wrap CJK text by width; respects explicit \n; returns next y
+function wrapText(text,x,y,maxW,lh,font,color,align){
+  ctx.font=font;ctx.fillStyle=color;ctx.textAlign=align||'left';ctx.textBaseline='alphabetic';
+  text.split('\n').forEach(para=>{
+    let line='';
+    for(const ch of para){
+      if(ctx.measureText(line+ch).width>maxW && line){ctx.fillText(line,x,y);y+=lh;line=ch;}
+      else line+=ch;
+    }
+    ctx.fillText(line,x,y);y+=lh;
+  });
+  return y;
+}
+
+function draw(){
+  const W=1080,H=1080,M=64;
+  // cream background
+  ctx.fillStyle='#fbf8f2';ctx.fillRect(0,0,W,H);
+
+  // title (store name)
+  ctx.fillStyle='#2b2b2b';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+  ctx.font='700 64px "Caveat",'+HAND;
+  ctx.fillText(document.getElementById('store').value.trim()||'店家名稱',W/2,118);
+  // hours
+  let hrs=document.getElementById('hours').value.trim();
+  if(hrs){ if(!/^🕐/.test(hrs)) hrs='🕐 '+hrs;
+    ctx.font='40px '+HAND;ctx.fillStyle='#444';ctx.fillText(hrs,W/2,175);}
+
+  // photos
+  const top=215, ph=400, gap=28;
+  if(img1&&img2){
+    const pw=(W-2*M-gap)/2;
+    rImg(img1,M,top,pw,ph,16);
+    rImg(img2,M+pw+gap,top,pw,ph,16);
+  } else if(img1||img2){
+    const im=img1||img2, pw=W-2*M; // single wide... keep square-ish centered
+    const sw2=620, x=(W-sw2)/2;
+    rImg(im,x,top,sw2,ph,16);
+  } else {
+    const pw=(W-2*M-gap)/2;
+    placeholder(M,top,pw,ph,'放第一張照片');
+    placeholder(M+pw+gap,top,pw,ph,'放第二張（選填）');
+  }
+
+  // notes under photos
+  const noteTop=top+ph+50, lh=46;
+  const single=(!!img1)^(!!img2) || (!img1&&!img2);
+  let yL,yR;
+  if(img1&&img2){
+    const pw=(W-2*M-gap)/2;
+    yL=wrapText(document.getElementById('note1').value,M,noteTop,pw,lh,'34px '+HAND,'#333','left');
+    yR=wrapText(document.getElementById('note2').value,M+pw+gap,noteTop,pw,lh,'34px '+HAND,'#333','left');
+  } else {
+    // single/none: stack both notes centered-left under the centered photo
+    const x=(W-620)/2;
+    yL=wrapText(document.getElementById('note1').value,x,noteTop,620,lh,'34px '+HAND,'#333','left');
+    const n2=document.getElementById('note2').value.trim();
+    yR=n2?wrapText(n2,x,yL+6,620,lh,'34px '+HAND,'#333','left'):yL;
+  }
+  let y=Math.max(yL,yR)+44;
+
+  // 回訪意願 + dots
+  ctx.font='38px '+HAND;ctx.fillStyle='#333';ctx.textAlign='left';
+  const lbl='回訪意願：';
+  const lblW=ctx.measureText(lbl).width;
+  const dotsW=5*38+4*14, blockW=lblW+16+dotsW;
+  const bx=(W-blockW)/2;
+  ctx.fillText(lbl,bx,y);
+  const dr=15, dy=y-12;
+  for(let i=0;i<5;i++){
+    const cx=bx+lblW+16+dr+i*(38+14);
+    ctx.beginPath();ctx.arc(cx,dy,dr,0,Math.PI*2);
+    if(i<rating){ctx.fillStyle=accent;ctx.fill();}
+    else{ctx.lineWidth=3;ctx.strokeStyle='#cdbfa8';ctx.stroke();}
+  }
+  y+=58;
+
+  // address
+  const addr=document.getElementById('addr').value.trim();
+  if(addr){ctx.font='34px '+HAND;ctx.fillStyle='#444';ctx.textAlign='center';
+    ctx.fillText('📍 '+addr,W/2,y);}
+}
+
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+// download
+document.getElementById('download').onclick=()=>{
+  const url=cv.toDataURL('image/png');
+  const name=(document.getElementById('store').value.trim()||'ig-post').replace(/\s+/g,'-')+'.png';
+  const a=document.createElement('a');a.download=name;a.href=url;a.click();
+  document.getElementById('ovImg').src=url;
+  const dl=document.getElementById('ovDl');dl.href=url;dl.download=name;
+  document.getElementById('overlay').classList.add('show');
+};
+document.getElementById('ovClose').onclick=()=>document.getElementById('overlay').classList.remove('show');
+document.getElementById('overlay').onclick=e=>{if(e.target.id==='overlay')e.currentTarget.classList.remove('show');};
+
+// caption
+document.getElementById('genCaption').onclick=()=>{
+  const store=document.getElementById('store').value.trim()||'店家名稱';
+  const hrs=document.getElementById('hours').value.trim();
+  const addr=document.getElementById('addr').value.trim();
+  const n1=document.getElementById('note1').value.trim();
+  const n2=document.getElementById('note2').value.trim();
+  const dots='●'.repeat(rating)+'○'.repeat(5-rating);
+  let cap=`📍 ${store}\n`;
+  if(hrs)cap+=`🕐 ${hrs}\n`;
+  cap+=`\n`;
+  if(n1)cap+=n1+'\n';
+  if(n2)cap+=n2+'\n';
+  cap+=`\n回訪意願：${dots}\n`;
+  if(addr)cap+=`地址：${addr}\n`;
+  cap+=`\n#美食 #${store.replace(/\s+/g,'')} #食記 #咖啡廳 #美食推薦 #ig美食`;
+  const box=document.getElementById('caption');box.textContent=cap;box.style.display='block';
+  const cp=document.getElementById('copyCap');cp.style.display='inline-block';
+  cp.onclick=()=>{navigator.clipboard.writeText(cap);cp.textContent='已複製 ✓';setTimeout(()=>cp.textContent='複製 caption',1500);};
+};
+
+buildDots();
+// wait for handwriting fonts before first paint so canvas uses them
+if(document.fonts&&document.fonts.ready){
+  Promise.all([
+    document.fonts.load('64px "Caveat"'),
+    document.fonts.load('40px "LXGW WenKai TC"'),
+    document.fonts.load('700 40px "LXGW WenKai TC"')
+  ]).then(draw).catch(draw);
+  document.fonts.ready.then(draw);
+} else { draw(); }
+draw();
+</script>
+</body>
+</html>
