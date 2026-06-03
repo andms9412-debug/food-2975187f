@@ -51,7 +51,8 @@
   button{font-family:inherit; cursor:pointer; border:none; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:700;}
   .btn-primary{background:var(--accent); color:#3a2a00; width:100%; margin-top:20px;}
   .btn-ghost{background:#222732; color:var(--text);}
-  canvas{height:min(86vh,700px); width:auto; aspect-ratio:4/5; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.5); background:#fff;}
+  canvas{height:min(86vh,700px); width:auto; aspect-ratio:4/5; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.5); background:#fff; touch-action:none; cursor:grab;}
+  canvas:active{cursor:grabbing;}
   .hint{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.6;}
   .caption-wrap{display:flex; flex-direction:column; align-items:center; gap:8px;}
   .caption-box{width:380px; max-width:90vw; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; font-size:13px; white-space:pre-wrap; color:var(--text); line-height:1.7; display:none;}
@@ -122,7 +123,7 @@
     <button class="btn-primary" id="download">⬇ 下載貼文圖 (PNG)</button>
     <button class="btn-ghost" id="genCaption" style="width:100%;margin-top:10px;">產生 IG 文字 caption</button>
 
-    <p class="hint">只放一張照片時，它會自動置中放大。文字即時更新在右側，下載就是右側那張。</p>
+    <p class="hint">只放一張照片時，它會自動置中放大。文字即時更新在右側，下載就是右側那張。<br><b>照片匯入後：在預覽圖上單指拖移、雙指縮放</b>（桌機滑鼠拖、滾輪縮放）即可調整照片在框內的顯示，框不會動。</p>
   </div>
 
   <div class="stage">
@@ -145,6 +146,10 @@
 <script>
 const cv=document.getElementById('canvas'), ctx=cv.getContext('2d');
 let img1=null, img2=null, rating=5, accent='#f0b429', bgColor='#faf7f0';
+// 每張照片在框內的位移/縮放（zoom=1 = cover-fit 基準；ox/oy 為 canvas 座標位移）
+let tf1={zoom:1,ox:0,oy:0}, tf2={zoom:1,ox:0,oy:0};
+let frames=[];            // 上次繪製的照片框 [{im,tf,x,y,w,h}]，給手勢命中判斷用
+let reset1=null, reset2=null;
 const HAND='"LXGW WenKai TC","PingFang TC",sans-serif';
 const ACCENTS=['#f0b429','#f2784b','#e63946','#2a9d8f','#3a86ff','#8d6e63'];
 
@@ -207,22 +212,99 @@ function wireDrop(id){
 function load(f,n,el){
   if(!f||!f.type.startsWith('image/'))return;
   const r=new FileReader();
-  r.onload=ev=>{const im=new Image();im.onload=()=>{if(n==='1')img1=im;else img2=im;el.classList.add('has');el.textContent=(n==='1'?'① ':'② ')+'已選：'+f.name;draw();};im.src=ev.target.result;};
+  r.onload=ev=>{const im=new Image();im.onload=()=>{
+    if(n==='1'){img1=im;tf1={zoom:1,ox:0,oy:0};if(reset1)reset1.style.display='block';}
+    else{img2=im;tf2={zoom:1,ox:0,oy:0};if(reset2)reset2.style.display='block';}
+    el.classList.add('has');el.textContent=(n==='1'?'① ':'② ')+'已選：'+f.name;draw();};im.src=ev.target.result;};
   r.readAsDataURL(f);
 }
 wireDrop('drop1'); wireDrop('drop2');
 
+// ── 照片框內拖移 / 縮放（iOS 單指拖、雙指捏；桌機滑鼠拖、滾輪縮放）──
+function canvasPt(clientX,clientY){
+  const r=cv.getBoundingClientRect();
+  return {x:(clientX-r.left)*(cv.width/r.width), y:(clientY-r.top)*(cv.height/r.height)};
+}
+function frameAt(p){
+  for(let i=frames.length-1;i>=0;i--){const f=frames[i];
+    if(p.x>=f.x&&p.x<=f.x+f.w&&p.y>=f.y&&p.y<=f.y+f.h)return f;}
+  return null;
+}
+// 以 (cx,cy) 為錨點縮放：該點底下的同一個照片像素保持不動
+function zoomAround(f,newZoom,cx,cy){
+  const im=f.im,w=f.w,h=f.h,tf=f.tf, s0=Math.max(w/im.width,h/im.height);
+  const sOld=s0*tf.zoom;
+  const leftOld=f.x+(w-im.width*sOld)/2+tf.ox, topOld=f.y+(h-im.height*sOld)/2+tf.oy;
+  const u=(cx-leftOld)/sOld, v=(cy-topOld)/sOld;
+  tf.zoom=Math.max(1,Math.min(6,newZoom));
+  const sNew=s0*tf.zoom;
+  tf.ox=cx-(f.x+(w-im.width*sNew)/2)-u*sNew;
+  tf.oy=cy-(f.y+(h-im.height*sNew)/2)-v*sNew;
+  clampTf(im,w,h,tf);draw();
+}
+let drag=null, pinch=null;
+cv.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){
+    const p=canvasPt(e.touches[0].clientX,e.touches[0].clientY), f=frameAt(p);
+    if(f){drag={f,x:p.x,y:p.y};pinch=null;}
+  } else if(e.touches.length===2){
+    const p0=canvasPt(e.touches[0].clientX,e.touches[0].clientY), p1=canvasPt(e.touches[1].clientX,e.touches[1].clientY);
+    const mid={x:(p0.x+p1.x)/2,y:(p0.y+p1.y)/2}, f=frameAt(mid)||frameAt(p0);
+    if(f){pinch={f,dist:Math.hypot(p1.x-p0.x,p1.y-p0.y),zoom:f.tf.zoom};drag=null;}
+  }
+  if(drag||pinch)e.preventDefault();
+},{passive:false});
+cv.addEventListener('touchmove',e=>{
+  if(pinch&&e.touches.length>=2){
+    const p0=canvasPt(e.touches[0].clientX,e.touches[0].clientY), p1=canvasPt(e.touches[1].clientX,e.touches[1].clientY);
+    const mid={x:(p0.x+p1.x)/2,y:(p0.y+p1.y)/2}, d=Math.hypot(p1.x-p0.x,p1.y-p0.y);
+    zoomAround(pinch.f,pinch.zoom*(d/pinch.dist),mid.x,mid.y);e.preventDefault();
+  } else if(drag&&e.touches.length===1){
+    const p=canvasPt(e.touches[0].clientX,e.touches[0].clientY);
+    drag.f.tf.ox+=p.x-drag.x;drag.f.tf.oy+=p.y-drag.y;drag.x=p.x;drag.y=p.y;
+    clampTf(drag.f.im,drag.f.w,drag.f.h,drag.f.tf);draw();e.preventDefault();
+  }
+},{passive:false});
+cv.addEventListener('touchend',e=>{if(e.touches.length===0){drag=null;pinch=null;}else if(e.touches.length===1){pinch=null;}});
+let mdrag=null;
+cv.addEventListener('mousedown',e=>{const p=canvasPt(e.clientX,e.clientY),f=frameAt(p);if(f){mdrag={f,x:p.x,y:p.y};e.preventDefault();}});
+window.addEventListener('mousemove',e=>{if(!mdrag)return;const p=canvasPt(e.clientX,e.clientY);
+  mdrag.f.tf.ox+=p.x-mdrag.x;mdrag.f.tf.oy+=p.y-mdrag.y;mdrag.x=p.x;mdrag.y=p.y;
+  clampTf(mdrag.f.im,mdrag.f.w,mdrag.f.h,mdrag.f.tf);draw();});
+window.addEventListener('mouseup',()=>mdrag=null);
+cv.addEventListener('wheel',e=>{const p=canvasPt(e.clientX,e.clientY),f=frameAt(p);if(!f)return;
+  e.preventDefault();zoomAround(f,f.tf.zoom*(e.deltaY<0?1.08:0.926),p.x,p.y);},{passive:false});
+
+// 每張照片的「重設位置」鈕（匯入後才顯示）
+function addReset(dropId,n){
+  const el=document.getElementById(dropId), b=document.createElement('button');
+  b.type='button';b.className='btn-ghost';b.textContent='↺ 重設此照片位置／縮放';
+  b.style.cssText='width:100%;margin-top:8px;font-size:12px;padding:6px;display:none;';
+  el.after(b);
+  b.onclick=()=>{if(n==='1')tf1={zoom:1,ox:0,oy:0};else tf2={zoom:1,ox:0,oy:0};draw();};
+  return b;
+}
+reset1=addReset('drop1','1'); reset2=addReset('drop2','2');
+
 ['store','hours','region','addr','igacct','note1','note2'].forEach(id=>document.getElementById(id).oninput=draw);
 
-// cover-fit draw with rounded corners
-function rImg(im,x,y,w,h,r){
+// cover-fit draw with rounded corners + per-photo zoom/offset（框固定，調框內顯示）
+function rImg(im,x,y,w,h,r,tf){
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
   ctx.clip();
-  const s=Math.max(w/im.width,h/im.height), dw=im.width*s, dh=im.height*s;
-  ctx.drawImage(im,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+  const s=Math.max(w/im.width,h/im.height)*tf.zoom, dw=im.width*s, dh=im.height*s;
+  ctx.drawImage(im,x+(w-dw)/2+tf.ox,y+(h-dh)/2+tf.oy,dw,dh);
   ctx.restore();
+}
+// 夾制位移，讓照片永遠蓋滿框、不露底色
+function clampTf(im,w,h,tf){
+  tf.zoom=Math.max(1,Math.min(6,tf.zoom));
+  const s=Math.max(w/im.width,h/im.height)*tf.zoom;
+  const mx=Math.max(0,(im.width*s-w)/2), my=Math.max(0,(im.height*s-h)/2);
+  tf.ox=Math.max(-mx,Math.min(mx,tf.ox));
+  tf.oy=Math.max(-my,Math.min(my,tf.oy));
 }
 function placeholder(x,y,w,h,txt){
   ctx.save();
@@ -276,14 +358,15 @@ function draw(){
 
   // photos（加高填滿 4:5 上半，減少下方留白）
   const top=hY+45, ph=600, gap=28;
+  frames=[];
   if(img1&&img2){
     const pw=(W-2*M-gap)/2;
-    rImg(img1,M,top,pw,ph,16);
-    rImg(img2,M+pw+gap,top,pw,ph,16);
+    rImg(img1,M,top,pw,ph,16,tf1);          frames.push({im:img1,tf:tf1,x:M,y:top,w:pw,h:ph});
+    rImg(img2,M+pw+gap,top,pw,ph,16,tf2);    frames.push({im:img2,tf:tf2,x:M+pw+gap,y:top,w:pw,h:ph});
   } else if(img1||img2){
-    const im=img1||img2;
+    const im=img1||img2, tf=img1?tf1:tf2;
     const sw2=620, x=(W-sw2)/2;
-    rImg(im,x,top,sw2,ph,16);
+    rImg(im,x,top,sw2,ph,16,tf);             frames.push({im,tf,x,y:top,w:sw2,h:ph});
   } else {
     const pw=(W-2*M-gap)/2;
     placeholder(M,top,pw,ph,'放第一張照片');
