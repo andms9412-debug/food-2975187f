@@ -40,7 +40,7 @@
   button{font-family:inherit; cursor:pointer; border:none; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:700;}
   .btn-primary{background:var(--accent); color:#3a2a00; width:100%; margin-top:20px;}
   .btn-ghost{background:#222732; color:var(--text);}
-  canvas{width:min(74vh,560px); height:min(74vh,560px); border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.5); background:#fff;}
+  canvas{height:min(86vh,700px); width:auto; aspect-ratio:4/5; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.5); background:#fff;}
   .hint{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.6;}
   .caption-wrap{display:flex; flex-direction:column; align-items:center; gap:8px;}
   .caption-box{width:380px; max-width:90vw; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; font-size:13px; white-space:pre-wrap; color:var(--text); line-height:1.7; display:none;}
@@ -53,7 +53,7 @@
     body{flex-direction:column;}
     .controls{width:100%; height:auto; border-right:none; border-bottom:1px solid var(--line);}
     .stage{padding:16px;}
-    canvas{width:min(92vw,520px); height:min(92vw,520px);}
+    canvas{width:min(92vw,520px); height:auto; aspect-ratio:4/5;}
     .caption-box{width:92vw;}
   }
 </style>
@@ -61,10 +61,13 @@
 <body>
   <div class="controls">
     <h1>🍽 美食手寫筆記 IG 生成器</h1>
-    <p class="sub">手寫風 · 兩張照片 · 回訪意願圓點 · 下載 1080×1080</p>
+    <p class="sub">手寫風 · 兩張照片 · 回訪意願圓點 · 下載 1080×1350（IG 直式 4:5）</p>
 
     <label>店家名稱</label>
     <input type="text" id="store" value="Days Eye Coffee">
+
+    <label>地區標籤（例：台北・萬華；留空則不顯示）</label>
+    <input type="text" id="region" value="台中・西區">
 
     <label>營業時間（🕐 開頭可省略，會自動加）</label>
     <input type="text" id="hours" value="10:00–17:30（週一公休）">
@@ -99,7 +102,7 @@
   </div>
 
   <div class="stage">
-    <canvas id="canvas" width="1080" height="1080"></canvas>
+    <canvas id="canvas" width="1080" height="1350"></canvas>
     <div class="caption-wrap">
       <div class="caption-box" id="caption"></div>
       <button class="btn-ghost" id="copyCap" style="display:none;">複製 caption</button>
@@ -183,21 +186,36 @@ function wrapText(text,x,y,maxW,lh,font,color,align){
 }
 
 function draw(){
-  const W=1080,H=1080,M=64;
+  const W=1080,H=1350,M=64;
   // cream background
   ctx.fillStyle='#fbf8f2';ctx.fillRect(0,0,W,H);
 
   // title (store name)
   ctx.fillStyle='#2b2b2b';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-  ctx.font='700 64px "Caveat",'+HAND;
-  ctx.fillText(document.getElementById('store').value.trim()||'店家名稱',W/2,118);
+  ctx.font='700 72px "Caveat",'+HAND;
+  ctx.fillText(document.getElementById('store').value.trim()||'店家名稱',W/2,128);
+
+  // region tag (pill badge)
+  const region=document.getElementById('region').value.trim();
+  let hY=200;           // hours baseline; pushed down when a region tag is shown
+  if(region){
+    ctx.font='34px '+HAND;
+    const rt='📍 '+region, tw=ctx.measureText(rt).width;
+    const bw=tw+44, bh=52, bx=(W-bw)/2, by=164;
+    ctx.lineWidth=2.5;ctx.strokeStyle=accent;
+    roundRect(bx,by,bw,bh,bh/2);ctx.stroke();
+    ctx.fillStyle='#555';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(rt,W/2,by+bh/2+2);
+    ctx.textBaseline='alphabetic';
+    hY=270;
+  }
   // hours
   let hrs=document.getElementById('hours').value.trim();
   if(hrs){ if(!/^🕐/.test(hrs)) hrs='🕐 '+hrs;
-    ctx.font='40px '+HAND;ctx.fillStyle='#444';ctx.fillText(hrs,W/2,175);}
+    ctx.font='40px '+HAND;ctx.fillStyle='#444';ctx.textAlign='center';ctx.fillText(hrs,W/2,hY);}
 
   // photos
-  const top=215, ph=400, gap=28;
+  const top=hY+45, ph=520, gap=28;
   if(img1&&img2){
     const pw=(W-2*M-gap)/2;
     rImg(img1,M,top,pw,ph,16);
@@ -268,19 +286,20 @@ document.getElementById('overlay').onclick=e=>{if(e.target.id==='overlay')e.curr
 // caption
 document.getElementById('genCaption').onclick=()=>{
   const store=document.getElementById('store').value.trim()||'店家名稱';
+  const region=document.getElementById('region').value.trim();
   const hrs=document.getElementById('hours').value.trim();
   const addr=document.getElementById('addr').value.trim();
   const n1=document.getElementById('note1').value.trim();
   const n2=document.getElementById('note2').value.trim();
   const dots='●'.repeat(rating)+'○'.repeat(5-rating);
-  let cap=`📍 ${store}\n`;
+  let cap=`📍 ${store}`+(region?`（${region}）`:'')+`\n`;
   if(hrs)cap+=`🕐 ${hrs}\n`;
   cap+=`\n`;
   if(n1)cap+=n1+'\n';
   if(n2)cap+=n2+'\n';
   cap+=`\n回訪意願：${dots}\n`;
   if(addr)cap+=`地址：${addr}\n`;
-  cap+=`\n#美食 #${store.replace(/\s+/g,'')} #食記 #咖啡廳 #美食推薦 #ig美食`;
+  cap+=`\n#美食 #${store.replace(/\s+/g,'')}`+(region?` #${region.replace(/[・·\s]/g,'')}美食`:'')+` #食記 #咖啡廳 #美食推薦 #ig美食`;
   const box=document.getElementById('caption');box.textContent=cap;box.style.display='block';
   const cp=document.getElementById('copyCap');cp.style.display='inline-block';
   cp.onclick=()=>{navigator.clipboard.writeText(cap);cp.textContent='已複製 ✓';setTimeout(()=>cp.textContent='複製 caption',1500);};
