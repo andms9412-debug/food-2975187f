@@ -27,6 +27,16 @@
     background:#0c0e12; color:var(--text); font-size:15px; font-family:inherit; resize:vertical;
   }
   select{cursor:pointer;}
+  .bgdrop{position:relative; width:100%;}
+  .bgdrop-trigger{display:flex; align-items:center; gap:10px; width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#0c0e12; color:var(--text); font-size:15px; cursor:pointer; font-family:inherit;}
+  .bgdrop-sw{width:22px; height:22px; border-radius:6px; border:1px solid rgba(255,255,255,.22); flex:none;}
+  .bgdrop-caret{margin-left:auto; color:var(--muted);}
+  .bgdrop-panel{position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:30; background:#11151c; border:1px solid var(--line); border-radius:10px; max-height:300px; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.55); display:none;}
+  .bgdrop-panel.open{display:block;}
+  .bgdrop-opt{display:flex; align-items:center; gap:10px; padding:8px 12px; cursor:pointer; color:var(--text); font-size:14px;}
+  .bgdrop-opt:hover, .bgdrop-opt.sel{background:#1b212b;}
+  .bgdrop-opt .sw{width:30px; height:30px; border-radius:6px; border:1px solid rgba(0,0,0,.15); flex:none;}
+  .bgdrop-opt .hex{margin-left:auto; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums;}
   textarea{min-height:70px; line-height:1.5;}
   .drop{border:2px dashed var(--line); border-radius:12px; padding:16px; text-align:center; color:var(--muted); cursor:pointer; transition:.15s; font-size:13px;}
   .drop:hover,.drop.over{border-color:var(--accent); color:var(--text); background:#14171e;}
@@ -97,9 +107,13 @@
     <div class="swatches" id="swatches"></div>
 
     <label>背景底色（100 種文青大地色系）</label>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <select id="bgSelect" style="flex:1;"></select>
-      <span id="bgPreview" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--line);flex:none;"></span>
+    <div class="bgdrop" id="bgDrop">
+      <button type="button" class="bgdrop-trigger" id="bgTrigger">
+        <span class="bgdrop-sw" id="bgTrigSw"></span>
+        <span id="bgTrigName">米白</span>
+        <span class="bgdrop-caret">▾</span>
+      </button>
+      <div class="bgdrop-panel" id="bgPanel"></div>
     </div>
 
     <button class="btn-primary" id="download">⬇ 下載貼文圖 (PNG)</button>
@@ -159,11 +173,18 @@ const BGS=[
 ['#e2cfc4','藕粉'],['#ddc6ba','粉陶'],['#d8bfb2','灰玫土'],['#e0cabe','奶藕'],['#d4b9ab','暗藕'],
 ['#cfb3a4','玫瑰土'],['#e3d0c6','粉米'],['#d9c0b4','藕杏'],['#cdb0a0','焦藕'],['#c6a899','土玫瑰']
 ];
-const bgSel=document.getElementById('bgSelect'), bgPrev=document.getElementById('bgPreview');
-BGS.forEach(([hex,name])=>{const o=document.createElement('option');o.value=hex;o.textContent=name+'  '+hex;
-  o.style.background=hex;o.style.color='#222';bgSel.appendChild(o);});
-bgSel.value=bgColor; bgPrev.style.background=bgColor;
-bgSel.onchange=()=>{bgColor=bgSel.value;bgPrev.style.background=bgColor;draw();};
+// 自訂下拉（native <select> 的 option 色塊在 iOS/Safari 不渲染，故自製每列含範例色塊）
+const bgPanel=document.getElementById('bgPanel'), bgTrigger=document.getElementById('bgTrigger');
+const bgTrigSw=document.getElementById('bgTrigSw'), bgTrigName=document.getElementById('bgTrigName');
+function selectBg(hex,name){bgColor=hex;bgTrigSw.style.background=hex;bgTrigName.textContent=name;
+  [...bgPanel.children].forEach(c=>c.classList.toggle('sel',c.dataset.hex===hex));draw();}
+BGS.forEach(([hex,name])=>{const o=document.createElement('div');o.className='bgdrop-opt';o.dataset.hex=hex;
+  o.innerHTML='<span class="sw" style="background:'+hex+'"></span><span>'+name+'</span><span class="hex">'+hex+'</span>';
+  o.onclick=()=>{selectBg(hex,name);bgPanel.classList.remove('open');};bgPanel.appendChild(o);});
+bgTrigger.onclick=e=>{e.stopPropagation();bgPanel.classList.toggle('open');
+  const sel=bgPanel.querySelector('.sel');if(bgPanel.classList.contains('open')&&sel)sel.scrollIntoView({block:'nearest'});};
+document.addEventListener('click',e=>{if(!document.getElementById('bgDrop').contains(e.target))bgPanel.classList.remove('open');});
+selectBg(BGS[0][0],BGS[0][1]);
 
 // dots picker
 const dp=document.getElementById('dotsPick');
