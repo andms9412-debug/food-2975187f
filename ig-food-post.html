@@ -22,10 +22,11 @@
   h1{font-size:18px; margin:0 0 4px;}
   .sub{color:var(--muted); font-size:13px; margin:0 0 18px;}
   label{display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; font-weight:600;}
-  input[type=text], textarea{
+  input[type=text], textarea, select{
     width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line);
     background:#0c0e12; color:var(--text); font-size:15px; font-family:inherit; resize:vertical;
   }
+  select{cursor:pointer;}
   textarea{min-height:70px; line-height:1.5;}
   .drop{border:2px dashed var(--line); border-radius:12px; padding:16px; text-align:center; color:var(--muted); cursor:pointer; transition:.15s; font-size:13px;}
   .drop:hover,.drop.over{border-color:var(--accent); color:var(--text); background:#14171e;}
@@ -95,6 +96,12 @@
     <label>圓點 / 主色</label>
     <div class="swatches" id="swatches"></div>
 
+    <label>背景底色（100 種文青大地色系）</label>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <select id="bgSelect" style="flex:1;"></select>
+      <span id="bgPreview" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--line);flex:none;"></span>
+    </div>
+
     <button class="btn-primary" id="download">⬇ 下載貼文圖 (PNG)</button>
     <button class="btn-ghost" id="genCaption" style="width:100%;margin-top:10px;">產生 IG 文字 caption</button>
 
@@ -120,7 +127,7 @@
 
 <script>
 const cv=document.getElementById('canvas'), ctx=cv.getContext('2d');
-let img1=null, img2=null, rating=5, accent='#f0b429';
+let img1=null, img2=null, rating=5, accent='#f0b429', bgColor='#faf7f0';
 const HAND='"LXGW WenKai TC","PingFang TC",sans-serif';
 const ACCENTS=['#f0b429','#f2784b','#e63946','#2a9d8f','#3a86ff','#8d6e63'];
 
@@ -128,6 +135,35 @@ const ACCENTS=['#f0b429','#f2784b','#e63946','#2a9d8f','#3a86ff','#8d6e63'];
 const sw=document.getElementById('swatches');
 ACCENTS.forEach((c,i)=>{const d=document.createElement('div');d.className='swatch'+(i===0?' on':'');d.style.background=c;
   d.onclick=()=>{accent=c;[...sw.children].forEach(x=>x.classList.remove('on'));d.classList.add('on');draw();};sw.appendChild(d);});
+
+// 100 種文青大地色系背景（皆為淺色，確保深色手寫字可讀）
+const BGS=[
+['#faf7f0','米白'],['#f8f4ea','象牙白'],['#fbf6ec','奶油白'],['#f6f1e3','燕麥白'],['#f4eee0','杏仁白'],
+['#f7f3e9','亞麻白'],['#f3ede0','珍珠米'],['#f9f5ec','月白米'],['#f2ecdd','淡牛奶'],['#f5efe1','雲朵米'],
+['#efe6d3','燕麥'],['#ece0c8','奶茶'],['#e8dcc0','焙茶奶'],['#e6d8ba','拿鐵'],['#ece1cb','香草奶'],
+['#e3d6b8','麥香'],['#ddd0af','太妃糖'],['#e7dcc2','卡士達'],['#e0d3b3','蜂蜜燕麥'],['#e9ddc4','杏仁奶'],
+['#e7d3b3','杏色'],['#e3cda8','沙杏'],['#ddc6a0','沙丘'],['#e6d2af','駝杏'],['#dcc6a2','細沙'],
+['#d9c19a','暖沙'],['#e1cda6','沙金'],['#d6bd94','麥田'],['#ddc8a4','米沙'],['#d3b98f','焦糖沙'],
+['#d2bd96','駝色'],['#cdb78c','卡其'],['#c9b187','亞麻駝'],['#d4c09a','燕麥駝'],['#c6ad81','橄欖卡其'],
+['#cfba90','淺駝'],['#c3aa7e','苔卡其'],['#d0bd97','奶油駝'],['#c8b187','沙駝'],['#bfa676','暗卡其'],
+['#e3c4a8','陶土粉'],['#ddb89a','赤陶'],['#d8b291','陶杏'],['#e0bfa0','蜜桃陶'],['#d4a988','磚粉'],
+['#cfa280','紅土'],['#dcb595','黏土粉'],['#d6ab87','陶色'],['#cca07c','焦陶'],['#e1c1a3','奶陶'],
+['#d8d6c2','鼠尾草白'],['#cfd0b8','淺鼠尾草'],['#c9ccad','苔綠白'],['#d2d3bd','灰綠'],['#c3c8a3','橄欖白'],
+['#cdd1b6','抹茶奶'],['#bfc59c','淡橄欖'],['#d6d8c6','霧綠'],['#c7ccac','草木灰綠'],['#bcc299','嫩橄欖'],
+['#d8d2c6','灰米'],['#cfc8ba','灰褐'],['#c8c0b0','石灰'],['#d2ccc0','燕麥灰'],['#c4bbab','灰駝'],
+['#cdc6b8','霧灰米'],['#beb4a3','大地灰'],['#d4cec3','雲灰'],['#c1b8a8','石褐'],['#b8ae9c','暖灰土'],
+['#ddc9a0','赭黃'],['#d8c192','芥末赭'],['#d3ba88','暗赭'],['#e0cda6','蜜赭'],['#d6bf95','焦赭'],
+['#cdb27f','土黃'],['#e2d0a9','沙赭'],['#d1b888','黃土'],['#c9ad77','老黃'],['#dcc69b','麥赭'],
+['#d9d0c5','莫蘭迪米'],['#d0c5b9','莫蘭迪駝'],['#cabeb0','莫蘭迪灰'],['#d4cabc','霧米'],['#c6b9a9','莫蘭迪褐'],
+['#cec3b5','灰奶茶'],['#c0b3a2','暖莫蘭迪'],['#d2c8bb','淺莫蘭迪'],['#c3b7a6','莫蘭迪土'],['#bbae9b','深莫蘭迪'],
+['#e2cfc4','藕粉'],['#ddc6ba','粉陶'],['#d8bfb2','灰玫土'],['#e0cabe','奶藕'],['#d4b9ab','暗藕'],
+['#cfb3a4','玫瑰土'],['#e3d0c6','粉米'],['#d9c0b4','藕杏'],['#cdb0a0','焦藕'],['#c6a899','土玫瑰']
+];
+const bgSel=document.getElementById('bgSelect'), bgPrev=document.getElementById('bgPreview');
+BGS.forEach(([hex,name])=>{const o=document.createElement('option');o.value=hex;o.textContent=name+'  '+hex;
+  o.style.background=hex;o.style.color='#222';bgSel.appendChild(o);});
+bgSel.value=bgColor; bgPrev.style.background=bgColor;
+bgSel.onchange=()=>{bgColor=bgSel.value;bgPrev.style.background=bgColor;draw();};
 
 // dots picker
 const dp=document.getElementById('dotsPick');
@@ -187,8 +223,8 @@ function wrapText(text,x,y,maxW,lh,font,color,align){
 
 function draw(){
   const W=1080,H=1350,M=64;
-  // cream background
-  ctx.fillStyle='#fbf8f2';ctx.fillRect(0,0,W,H);
+  // background (selectable earth-tone)
+  ctx.fillStyle=bgColor;ctx.fillRect(0,0,W,H);
 
   // title (store name)
   ctx.fillStyle='#2b2b2b';ctx.textAlign='center';ctx.textBaseline='alphabetic';
