@@ -151,6 +151,7 @@ let tf1={zoom:1,ox:0,oy:0}, tf2={zoom:1,ox:0,oy:0};
 let frames=[];            // 上次繪製的照片框 [{im,tf,x,y,w,h}]，給手勢命中判斷用
 let reset1=null, reset2=null;
 const HAND='"LXGW WenKai TC","PingFang TC",sans-serif';
+let fontDrawTimer=null, fontDrawRequest=0;
 const ACCENTS=['#f0b429','#f2784b','#e63946','#2a9d8f','#3a86ff','#8d6e63'];
 
 // swatches
@@ -185,7 +186,7 @@ const BGS=[
 const bgPanel=document.getElementById('bgPanel'), bgTrigger=document.getElementById('bgTrigger');
 const bgTrigSw=document.getElementById('bgTrigSw'), bgTrigName=document.getElementById('bgTrigName');
 function selectBg(hex,name){bgColor=hex;bgTrigSw.style.background=hex;bgTrigName.textContent=name;
-  [...bgPanel.children].forEach(c=>c.classList.toggle('sel',c.dataset.hex===hex));draw();}
+  [...bgPanel.children].forEach(c=>c.classList.toggle('sel',c.dataset.hex===hex));scheduleDraw();}
 BGS.forEach(([hex,name])=>{const o=document.createElement('div');o.className='bgdrop-opt';o.dataset.hex=hex;
   o.innerHTML='<span class="sw" style="background:'+hex+'"></span><span>'+name+'</span><span class="hex">'+hex+'</span>';
   o.onclick=()=>{selectBg(hex,name);bgPanel.classList.remove('open');};bgPanel.appendChild(o);});
@@ -286,7 +287,52 @@ function addReset(dropId,n){
 }
 reset1=addReset('drop1','1'); reset2=addReset('drop2','2');
 
-['store','hours','region','addr','igacct','note1','note2'].forEach(id=>document.getElementById(id).oninput=draw);
+['store','hours','region','addr','igacct','note1','note2'].forEach(id=>document.getElementById(id).oninput=scheduleDraw);
+
+function getCanvasText(){
+  return [
+    '店家名稱 放第一張照片 放第二張（選填） 回訪意願：',
+    document.getElementById('store').value,
+    document.getElementById('hours').value,
+    document.getElementById('region').value,
+    document.getElementById('addr').value,
+    document.getElementById('igacct').value,
+    document.getElementById('note1').value,
+    document.getElementById('note2').value
+  ].join('\n');
+}
+
+function ensureFontsForCurrentText(){
+  if(!document.fonts||!document.fonts.load)return Promise.resolve();
+  const text=getCanvasText()||'店家名稱';
+  const fonts=[
+    '700 72px "LXGW WenKai TC"',
+    '40px "LXGW WenKai TC"',
+    '38px "LXGW WenKai TC"',
+    '34px "LXGW WenKai TC"',
+    '30px "LXGW WenKai TC"'
+  ];
+  return Promise.all(fonts.map(font=>document.fonts.load(font,text))).then(()=>document.fonts.ready);
+}
+
+async function drawAfterFonts(){
+  const request=++fontDrawRequest;
+  try{await ensureFontsForCurrentText();}catch(e){}
+  if(request===fontDrawRequest)draw();
+}
+
+function scheduleDraw(){
+  clearTimeout(fontDrawTimer);
+  fontDrawTimer=setTimeout(()=>{fontDrawTimer=null;drawAfterFonts();},80);
+}
+
+async function drawForExport(){
+  clearTimeout(fontDrawTimer);
+  fontDrawTimer=null;
+  ++fontDrawRequest;
+  try{await ensureFontsForCurrentText();}catch(e){}
+  draw();
+}
 
 // cover-fit draw with rounded corners + per-photo zoom/offset（框固定，調框內顯示）
 function rImg(im,x,y,w,h,r,tf){
@@ -334,7 +380,7 @@ function draw(){
 
   // title (store name)
   ctx.fillStyle='#2b2b2b';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-  ctx.font='700 72px "Caveat",'+HAND;
+  ctx.font='700 72px '+HAND;
   ctx.fillText(document.getElementById('store').value.trim()||'店家名稱',W/2,128);
 
   // region tag (pill badge)
@@ -423,7 +469,8 @@ function draw(){
 function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 
 // download
-document.getElementById('download').onclick=()=>{
+document.getElementById('download').onclick=async()=>{
+  await drawForExport();
   const url=cv.toDataURL('image/png');
   const name=(document.getElementById('store').value.trim()||'ig-post').replace(/\s+/g,'-')+'.png';
   const a=document.createElement('a');a.download=name;a.href=url;a.click();
@@ -459,16 +506,7 @@ document.getElementById('genCaption').onclick=()=>{
 };
 
 buildDots();
-// wait for handwriting fonts before first paint so canvas uses them
-if(document.fonts&&document.fonts.ready){
-  Promise.all([
-    document.fonts.load('64px "Caveat"'),
-    document.fonts.load('40px "LXGW WenKai TC"'),
-    document.fonts.load('700 40px "LXGW WenKai TC"')
-  ]).then(draw).catch(draw);
-  document.fonts.ready.then(draw);
-} else { draw(); }
-draw();
+drawAfterFonts();
 </script>
 </body>
 </html>
