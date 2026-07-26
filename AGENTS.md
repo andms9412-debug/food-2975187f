@@ -44,11 +44,7 @@ git diff --check
 diff -u index.html ig-food-post.html
 ```
 
-2. Commit with the global Codex trailer when Codex creates the commit:
-
-```text
-Co-Authored-By: GPT-5.5 (Codex) <noreply@openai.com>
-```
+2. When Codex creates the commit, follow the global Codex commit-attribution rule; do not duplicate a model- or version-specific trailer here.
 
 3. Push:
 
