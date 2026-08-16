@@ -49,6 +49,7 @@
   .swatch{width:28px; height:28px; border-radius:50%; cursor:pointer; border:2px solid transparent;}
   .swatch.on{border-color:#fff;}
   button{font-family:inherit; cursor:pointer; border:none; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:700;}
+  button:disabled{cursor:wait; opacity:.72;}
   .btn-primary{background:var(--accent); color:#3a2a00; width:100%; margin-top:20px;}
   .btn-ghost{background:#222732; color:var(--text);}
   canvas{height:min(86vh,700px); width:auto; aspect-ratio:4/5; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.5); background:#fff; touch-action:none; cursor:grab;}
@@ -121,6 +122,7 @@
     </div>
 
     <button class="btn-primary" id="download">⬇ 下載貼文圖 (PNG)</button>
+    <button class="btn-ghost" id="resetPost" style="width:100%;margin-top:10px;">↻ 開始下一篇（清空）</button>
     <button class="btn-ghost" id="genCaption" style="width:100%;margin-top:10px;">產生 IG 文字 caption</button>
 
     <p class="hint">只放一張照片時，它會自動置中放大。文字即時更新在右側，下載就是右側那張。<br><b>照片匯入後：在預覽圖上單指拖移、雙指縮放</b>（桌機滑鼠拖、滾輪縮放）即可調整照片在框內的顯示，框不會動。</p>
@@ -152,6 +154,7 @@ let frames=[];            // 上次繪製的照片框 [{im,tf,x,y,w,h}]，給手
 let reset1=null, reset2=null;
 const HAND='"LXGW WenKai TC","PingFang TC",sans-serif';
 let fontDrawTimer=null, fontDrawRequest=0;
+const FONT_WAIT_MS=1800;
 const ACCENTS=['#f0b429','#f2784b','#e63946','#2a9d8f','#3a86ff','#8d6e63'];
 
 // swatches
@@ -315,13 +318,25 @@ function ensureFontsForCurrentText(){
   return Promise.all(fonts.map(font=>document.fonts.load(font,text))).then(()=>document.fonts.ready);
 }
 
+function ensureFontsWithTimeout(ms=FONT_WAIT_MS){
+  return new Promise(resolve=>{
+    let done=false;
+    const finish=()=>{if(done)return;done=true;clearTimeout(timer);resolve();};
+    const timer=setTimeout(finish,ms);
+    ensureFontsForCurrentText().then(finish,finish);
+  });
+}
+
 async function drawAfterFonts(){
   const request=++fontDrawRequest;
-  try{await ensureFontsForCurrentText();}catch(e){}
+  await ensureFontsWithTimeout();
   if(request===fontDrawRequest)draw();
 }
 
 function scheduleDraw(){
+  // Never let Safari font loading block visible edits. Redraw now, then improve
+  // the result once the requested CJK glyphs are ready (or the wait times out).
+  draw();
   clearTimeout(fontDrawTimer);
   fontDrawTimer=setTimeout(()=>{fontDrawTimer=null;drawAfterFonts();},80);
 }
@@ -330,7 +345,7 @@ async function drawForExport(){
   clearTimeout(fontDrawTimer);
   fontDrawTimer=null;
   ++fontDrawRequest;
-  try{await ensureFontsForCurrentText();}catch(e){}
+  await ensureFontsWithTimeout();
   draw();
 }
 
@@ -469,14 +484,29 @@ function draw(){
 function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 
 // download
-document.getElementById('download').onclick=async()=>{
-  await drawForExport();
-  const url=cv.toDataURL('image/png');
-  const name=(document.getElementById('store').value.trim()||'ig-post').replace(/\s+/g,'-')+'.png';
-  const a=document.createElement('a');a.download=name;a.href=url;a.click();
-  document.getElementById('ovImg').src=url;
-  const dl=document.getElementById('ovDl');dl.href=url;dl.download=name;
-  document.getElementById('overlay').classList.add('show');
+const downloadBtn=document.getElementById('download');
+downloadBtn.onclick=async()=>{
+  if(downloadBtn.disabled)return;
+  const label=downloadBtn.textContent;
+  downloadBtn.disabled=true;downloadBtn.textContent='⏳ 產生中…';downloadBtn.setAttribute('aria-busy','true');
+  try{
+    await drawForExport();
+    const url=cv.toDataURL('image/png');
+    const name=(document.getElementById('store').value.trim()||'ig-post').replace(/\s+/g,'-')+'.png';
+    const a=document.createElement('a');a.download=name;a.href=url;a.click();
+    document.getElementById('ovImg').src=url;
+    const dl=document.getElementById('ovDl');dl.href=url;dl.download=name;
+    document.getElementById('overlay').classList.add('show');
+  }catch(error){
+    console.error('PNG export failed',error);
+    alert('圖片產生失敗，請按「開始下一篇」後再試。');
+  }finally{
+    downloadBtn.disabled=false;downloadBtn.textContent=label;downloadBtn.removeAttribute('aria-busy');
+  }
+};
+document.getElementById('resetPost').onclick=()=>{
+  if(!confirm('確定清空目前的文字、照片與設定，開始下一篇嗎？'))return;
+  const url=new URL(location.href);url.searchParams.set('new',Date.now());location.replace(url);
 };
 document.getElementById('ovClose').onclick=()=>document.getElementById('overlay').classList.remove('show');
 document.getElementById('overlay').onclick=e=>{if(e.target.id==='overlay')e.currentTarget.classList.remove('show');};
